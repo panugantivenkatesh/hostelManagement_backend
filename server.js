@@ -109,30 +109,39 @@ const sendFCMNotifications = async (notification, targetRole, hostelId = null) =
     
     console.log(`📱 Sending FCM to ${tokens.length} Android devices`);
     
-    const message = {
-      notification: {
-        title: notification.title,
-        body: notification.message
-      },
-      data: {
-        type: notification.type || 'general',
-        complaintId: notification.complaintId || '',
-        action: 'view_notification'
-      },
-      android: {
-        notification: {
-          sound: 'default',
-          priority: 'high',
-          channelId: 'default'
-        }
-      },
-      tokens
-    };
+    let successCount = 0;
     
-    const response = await admin.messaging().sendMulticast(message);
-    console.log(`✅ FCM sent to ${response.successCount}/${tokens.length} devices`);
+    for (const token of tokens) {
+      try {
+        const message = {
+          notification: {
+            title: notification.title,
+            body: notification.message
+          },
+          data: {
+            type: notification.type || 'general',
+            complaintId: notification.complaintId || '',
+            action: 'view_notification'
+          },
+          android: {
+            notification: {
+              sound: 'default',
+              priority: 'high',
+              channelId: 'pgflow_notifications'
+            }
+          },
+          token
+        };
+        
+        await admin.messaging().send(message);
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to send FCM to token ${token.substring(0, 20)}:`, error.message);
+      }
+    }
     
-    return response.successCount;
+    console.log(`✅ FCM sent to ${successCount}/${tokens.length} devices`);
+    return successCount;
   } catch (error) {
     console.error('❌ FCM notification error:', error);
     return 0;
@@ -1075,8 +1084,16 @@ app.post('/api/hostelRequests/:id/approve', async (req, res) => {
             tokens
           };
           
-          const response = await admin.messaging().sendMulticast(fcmMessage);
-          console.log(`📱 FCM approval sent to ${response.successCount}/${tokens.length} hostel admin devices`);
+          for (const token of tokens) {
+            try {
+              const message = { ...fcmMessage, token };
+              delete message.tokens;
+              await admin.messaging().send(message);
+            } catch (error) {
+              console.error('FCM send error:', error.message);
+            }
+          }
+          console.log(`📱 FCM approval sent to ${tokens.length} hostel admin devices`);
         }
       } catch (fcmError) {
         console.error('❌ FCM approval notification error:', fcmError);
@@ -1690,8 +1707,16 @@ entities.forEach(entity => {
               tokens
             };
             
-            const response = await admin.messaging().sendMulticast(fcmMessage);
-            console.log(`📱 FCM sent to ${response.successCount}/${tokens.length} master admin devices`);
+            for (const token of tokens) {
+              try {
+                const message = { ...fcmMessage, token };
+                delete message.tokens;
+                await admin.messaging().send(message);
+              } catch (error) {
+                console.error('FCM send error:', error.message);
+              }
+            }
+            console.log(`📱 FCM sent to ${tokens.length} master admin devices`);
           }
         } catch (fcmError) {
           console.error('❌ FCM notification error:', fcmError);
