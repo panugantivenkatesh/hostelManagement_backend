@@ -917,32 +917,34 @@ app.post('/api/complaints/:id/comments', async (req, res) => {
     const targetHostelId = role === 'tenant' ? complaint.hostelId : null;
     
     if (role === 'admin' || role === 'receptionist') {
-      // Staff commented, notify the tenant
-      const tenantCommentNotification = {
+      // Staff commented, notify the tenant via FCM
+      await sendFCMNotifications({
         type: 'complaint_comment',
-        title: 'New Response to Your Complaint',
-        message: `${author} responded to your complaint "${complaint.title}": "${comment.substring(0, 100)}${comment.length > 100 ? '...' : ''}"`,
-        priority: 'medium',
-        createdAt: newComment.createdAt,
-        complaintId: complaint.id
-      };
+        title: '💬 New Response from Staff',
+        message: `👋 ${author} replied to "${complaint.title}": "${comment.substring(0, 80)}${comment.length > 80 ? '...' : ''}" 📝`,
+        complaintId: complaint.id,
+        route: '/tenant/complaints',
+        action: 'view_comments'
+      }, 'tenant', complaint.hostelId);
       
-      await sendNotification(tenantCommentNotification, 'tenant', complaint.hostelId);
-      console.log('💬 Staff comment notification sent to tenant');
+      console.log('💬 Staff comment FCM sent to tenant');
     } else {
-      // Tenant commented, notify staff
-      const staffCommentNotification = {
+      // Tenant commented, notify staff via FCM
+      await sendFCMNotifications({
         type: 'complaint_comment',
-        title: 'New Comment on Complaint',
-        message: `${author} added a comment to complaint "${complaint.title}": "${comment.substring(0, 100)}${comment.length > 100 ? '...' : ''}"`,
-        priority: 'medium',
-        createdAt: newComment.createdAt,
+        title: '💬 Tenant Update',
+        message: `🗨️ ${author} added: "${comment.substring(0, 80)}${comment.length > 80 ? '...' : ''}" on "${complaint.title}"`,
         complaintId: complaint.id
-      };
+      }, 'admin', complaint.hostelId);
       
-      await sendNotification(staffCommentNotification, 'admin', complaint.hostelId);
-      await sendNotification(staffCommentNotification, 'receptionist', complaint.hostelId);
-      console.log('💬 Tenant comment notification sent to staff');
+      await sendFCMNotifications({
+        type: 'complaint_comment',
+        title: '💬 Tenant Update',
+        message: `🗨️ ${author} added: "${comment.substring(0, 80)}${comment.length > 80 ? '...' : ''}" on "${complaint.title}"`,
+        complaintId: complaint.id
+      }, 'receptionist', complaint.hostelId);
+      
+      console.log('💬 Tenant comment FCM sent to staff');
     }
     
     res.json({ comment: newComment, complaint });
@@ -1255,19 +1257,24 @@ app.post('/api/complaints', upload.array('attachments', 5), async (req, res) => 
     // Initialize comments array
     newItem.comments = [];
     
-    // Send complaint notification to hostel staff
-    const complaintNotification = {
+    // Send FCM notification to hostel staff
+    await sendFCMNotifications({
       type: 'complaint',
-      title: 'New Complaint Received',
-      message: `New complaint "${newItem.title}" submitted by ${newItem.tenantName}. Priority: ${newItem.priority || 'medium'}. Please review and take appropriate action.`,
-      priority: newItem.priority || 'medium',
-      createdAt: newItem.createdAt,
-      complaintId: newItem.id
-    };
+      title: '🚨 New Complaint Alert',
+      message: `${newItem.tenantName} needs your attention! "${newItem.title}" - ${newItem.priority === 'high' ? '🔴 High Priority' : newItem.priority === 'medium' ? '🟡 Medium Priority' : '🟢 Low Priority'}`,
+      complaintId: newItem.id,
+      route: '/admin/complaints',
+      action: 'view_complaint'
+    }, 'admin', newItem.hostelId);
     
-    await sendNotification(complaintNotification, 'admin', newItem.hostelId);
-    await sendNotification(complaintNotification, 'receptionist', newItem.hostelId);
-    console.log('📢 Complaint notification sent to hostel staff');
+    await sendFCMNotifications({
+      type: 'complaint',
+      title: '🚨 New Complaint Alert', 
+      message: `${newItem.tenantName} needs your attention! "${newItem.title}" - ${newItem.priority === 'high' ? '🔴 High Priority' : newItem.priority === 'medium' ? '🟡 Medium Priority' : '🟢 Low Priority'}`,
+      complaintId: newItem.id
+    }, 'receptionist', newItem.hostelId);
+    
+    console.log('📢 Complaint FCM notification sent to hostel staff');
     
     // Send confirmation to tenant
     const tenantConfirmation = {
@@ -1363,32 +1370,26 @@ app.put('/api/complaints/:id', async (req, res) => {
     data.complaints[index] = updatedItem;
     await writeData(data);
     
-    // Send notification for status updates
+    // Send FCM notification for status updates
     if (originalItem.status !== updatedItem.status) {
-      const tenant = data.tenants.find(t => t.name === updatedItem.tenantName && t.hostelId === updatedItem.hostelId);
-      if (tenant) {
-        const tenantUser = data.users.find(u => u.name === tenant.name && u.role === 'tenant' && u.hostelId === updatedItem.hostelId);
-        if (tenantUser) {
-          connectedUsers.forEach((userData, ws) => {
-            if (ws.readyState === WebSocket.OPEN && 
-                userData.role === 'tenant' && 
-                userData.hostelId === updatedItem.hostelId &&
-                userData.name === tenantUser.name) {
-              ws.send(JSON.stringify({ 
-                type: 'notification', 
-                payload: {
-                  type: 'complaint_update',
-                  title: 'Complaint Status Updated',
-                  message: `Your complaint "${updatedItem.title}" status has been updated to ${updatedItem.status.replace('-', ' ')}`,
-                  priority: 'medium',
-                  createdAt: updatedItem.updatedAt,
-                  complaintId: updatedItem.id
-                }
-              }));
-            }
-          });
-        }
-      }
+      const statusEmoji = {
+        'open': '🟠',
+        'in-progress': '🔄', 
+        'resolved': '✅',
+        'closed': '🔒',
+        'reopen': '🔄'
+      };
+      
+      await sendFCMNotifications({
+        type: 'complaint_update',
+        title: `${statusEmoji[updatedItem.status] || '🔄'} Complaint Update`,
+        message: `Great news! Your complaint "${updatedItem.title}" is now ${updatedItem.status.replace('-', ' ')}. ${updatedItem.status === 'resolved' ? 'Thank you for your patience!' : 'We\'re working on it!'}`,
+        complaintId: updatedItem.id,
+        route: '/tenant/complaints',
+        action: 'view_complaint'
+      }, 'tenant', updatedItem.hostelId);
+      
+      console.log('🔄 Complaint status update FCM sent to tenant');
     }
     
     res.json(updatedItem);
@@ -1783,27 +1784,33 @@ entities.forEach(entity => {
         await sendNotification(tenantConfirmation, 'tenant', newItem.hostelId);
         console.log('📝 Checkout confirmation sent to tenant');
       } else if (entity === 'notices') {
-        // Notify all users in the hostel when new notice is posted
-        const noticeHostel = data.hostels.find(h => h.id === newItem.hostelId);
-        if (noticeHostel && noticeHostel.contactEmail) {
-          const noticeNotification = {
-            type: 'new_notice',
-            title: 'New Notice Posted',
-            message: `New notice: ${newItem.title}`,
-            priority: newItem.priority || 'medium',
-            createdAt: new Date().toISOString(),
-            noticeId: newItem.id
-          };
-          
-          // Notify all users in this hostel
-          connectedUsers.forEach((userData, ws) => {
-            if (ws.readyState === WebSocket.OPEN && 
-                (userData.hostelId === newItem.hostelId || userData.email === noticeHostel.contactEmail)) {
-              ws.send(JSON.stringify({ type: 'notification', payload: noticeNotification }));
-              console.log(`Notice notification sent to: ${userData.name}`);
-            }
-          });
-        }
+        // Send FCM notification to all users in the hostel
+        const priorityEmoji = newItem.priority === 'high' ? '🔴' : newItem.priority === 'medium' ? '🟡' : '🟢';
+        
+        await sendFCMNotifications({
+          type: 'new_notice',
+          title: `📝 Important Notice ${priorityEmoji}`,
+          message: `📢 ${newItem.title} - Please check the notice board for details!`,
+          noticeId: newItem.id
+        }, 'admin', newItem.hostelId);
+        
+        await sendFCMNotifications({
+          type: 'new_notice',
+          title: `📝 Important Notice ${priorityEmoji}`,
+          message: `📢 ${newItem.title} - Please check the notice board for details!`,
+          noticeId: newItem.id,
+          route: '/tenant/notices',
+          action: 'view_notice'
+        }, 'tenant', newItem.hostelId);
+        
+        await sendFCMNotifications({
+          type: 'new_notice',
+          title: `📝 Important Notice ${priorityEmoji}`,
+          message: `📢 ${newItem.title} - Please check the notice board for details!`,
+          noticeId: newItem.id
+        }, 'receptionist', newItem.hostelId);
+        
+        console.log('📝 Notice FCM sent to all hostel users');
       } else if (entity === 'staff') {
         // Notify hostel admin when new staff is added
         const staffHostel = data.hostels.find(h => h.id === newItem.hostelId);
