@@ -269,6 +269,34 @@ app.use((req, res, next) => {
 // Use notification routes
 app.use('/api/notifications', notificationRoutes);
 
+// Update FCM token for user switching
+app.post('/api/notifications/update-token', async (req, res) => {
+  try {
+    const { userId, hostelId, userType } = req.body;
+    
+    if (!userId || !userType) {
+      return res.status(400).json({ error: 'userId and userType are required' });
+    }
+    
+    // Update existing token with new user information
+    await db.run(`
+      UPDATE fcm_tokens 
+      SET userId = ?, hostelId = ?, userType = ?, updatedAt = ?
+      WHERE token IN (
+        SELECT token FROM fcm_tokens 
+        ORDER BY updatedAt DESC 
+        LIMIT 1
+      )
+    `, [userId, hostelId || '', userType, new Date().toISOString()]);
+    
+    console.log(`🔄 FCM token updated for user: ${userId}, role: ${userType}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update FCM token error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Initialize data file
 const initializeData = async () => {
   try {
@@ -2096,7 +2124,7 @@ entities.forEach(entity => {
         
         console.log('Sending notification to hostel contact:', updatedItem.contactEmail);
         
-        // Send directly to hostel contact email instead of using hostelId matching
+        // Send WebSocket notifications
         connectedUsers.forEach((userData, ws) => {
           if (ws.readyState === WebSocket.OPEN && 
               userData.email === updatedItem.contactEmail && 
@@ -2105,6 +2133,14 @@ entities.forEach(entity => {
             console.log(`Direct notification sent to: ${userData.name} (${userData.email})`);
           }
         });
+        
+        // Send FCM notifications to hostel admin
+        await sendFCMNotifications({
+          type: 'hostel_status_change',
+          title: updatedItem.status === 'active' ? '✅ Hostel Activated' : '❌ Hostel Deactivated',
+          message: `Your hostel "${updatedItem.displayName || updatedItem.name}" has been ${updatedItem.status === 'active' ? 'activated' : 'deactivated'} by Master Admin.`,
+          hostelId: updatedItem.id
+        }, 'admin', updatedItem.id);
         
         console.log('Notifications sent for hostel status change');
       }
