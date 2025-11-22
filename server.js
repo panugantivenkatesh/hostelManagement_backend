@@ -236,7 +236,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Initialize SQLite database
 let db;
@@ -269,6 +270,58 @@ app.use((req, res, next) => {
 // Use notification routes
 app.use('/api/notifications', notificationRoutes);
 
+// Emergency data recovery endpoints
+app.get('/api/admin/backups', async (req, res) => {
+  try {
+    const backups = await fs.readdir(BACKUP_DIR);
+    const backupFiles = backups.filter(f => f.startsWith('data-')).sort().reverse();
+    
+    const backupInfo = await Promise.all(backupFiles.map(async (file) => {
+      const filePath = path.join(BACKUP_DIR, file);
+      const stats = await fs.stat(filePath);
+      return {
+        filename: file,
+        size: stats.size,
+        created: stats.mtime,
+        timestamp: file.replace('data-', '').replace('.json', '')
+      };
+    }));
+    
+    res.json(backupInfo);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/restore/:filename', async (req, res) => {
+  try {
+    const backupPath = path.join(BACKUP_DIR, req.params.filename);
+    
+    // Verify backup file exists and is valid
+    const backupData = await fs.readFile(backupPath, 'utf8');
+    JSON.parse(backupData); // Validate JSON
+    
+    // Create backup of current file before restore
+    await createBackup();
+    
+    // Restore from backup
+    await fs.copyFile(backupPath, DATA_FILE);
+    
+    res.json({ message: 'Data restored successfully from backup', filename: req.params.filename });
+  } catch (error) {
+    res.status(500).json({ error: `Failed to restore backup: ${error.message}` });
+  }
+});
+
+app.post('/api/admin/create-backup', async (req, res) => {
+  try {
+    await createBackup();
+    res.json({ message: 'Manual backup created successfully' });
+  } catch (error) {
+    res.status(500).json({ error: `Failed to create backup: ${error.message}` });
+  }
+});
+
 // Update FCM token for user switching
 app.post('/api/notifications/update-token', async (req, res) => {
   try {
@@ -297,18 +350,241 @@ app.post('/api/notifications/update-token', async (req, res) => {
   }
 });
 
-// Initialize data file
+// Initialize data file with backup
 const initializeData = async () => {
   try {
     await fs.access(DATA_FILE);
-  } catch {
+    // Verify existing file is valid JSON
+    const content = await fs.readFile(DATA_FILE, 'utf8');
+    JSON.parse(content);
+  } catch (error) {
+    console.log('Initializing data file or restoring from backup...');
+    
+    // Try to restore from backup first
+    try {
+      await fs.mkdir(BACKUP_DIR, { recursive: true });
+      const backups = await fs.readdir(BACKUP_DIR);
+      const latestBackup = backups.filter(f => f.startsWith('data-')).sort().pop();
+      
+      if (latestBackup) {
+        await fs.copyFile(path.join(BACKUP_DIR, latestBackup), DATA_FILE);
+        console.log('Restored from backup:', latestBackup);
+        return;
+      }
+    } catch (backupError) {
+      console.log('No valid backup found, creating fresh file');
+    }
+    
+    // Create fresh file with test data
     const initialData = {
-      hostels: [],
-      tenants: [],
-      rooms: [],
+      hostels: [
+        {
+          id: "1",
+          name: "TechLearners Hostel",
+          displayName: "TechLearners Hostel",
+          address: "123 Tech Street, Hyderabad, Telangana 500001",
+          contactEmail: "admin@techlearners.com",
+          phone: "9876543210",
+          planType: "premium",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      rooms: [
+        {
+          id: "1",
+          roomNumber: "101",
+          roomType: "single",
+          capacity: 1,
+          rent: 8000,
+          deposit: 5000,
+          status: "occupied",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "2",
+          roomNumber: "102",
+          roomType: "single",
+          capacity: 1,
+          rent: 7500,
+          deposit: 5000,
+          status: "occupied",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      tenants: [
+        {
+          id: "1",
+          name: "Rahul Kumar",
+          email: "rahul@techlearners.com",
+          phone: "9876543211",
+          room: "101",
+          roomId: "1",
+          rent: 8000,
+          deposit: 5000,
+          status: "active",
+          joiningDate: "2024-01-15",
+          nextDueDate: "2024-12-15",
+          pendingDues: 0,
+          aadharNumber: "1234-5678-9012",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "2",
+          name: "Priya Sharma",
+          email: "priya@techlearners.com",
+          phone: "9876543212",
+          room: "102",
+          roomId: "2",
+          rent: 7500,
+          deposit: 5000,
+          status: "active",
+          joiningDate: "2024-02-01",
+          nextDueDate: "2025-01-01",
+          pendingDues: 0,
+          aadharNumber: "2345-6789-0123",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      users: [
+        {
+          id: "1",
+          name: "Master Admin",
+          email: "master@hostelpro.com",
+          phone: "9999999999",
+          role: "master_admin",
+          password: "master123",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "2",
+          name: "Venkatesh Panuganti",
+          email: "admin@techlearners.com",
+          phone: "9908227236",
+          role: "admin",
+          password: "admin123",
+          hostelId: "1",
+          hostelName: "TechLearners Hostel",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "3",
+          name: "Rahul Kumar",
+          email: "rahul@techlearners.com",
+          phone: "9876543211",
+          role: "tenant",
+          password: "tenant123",
+          hostelId: "1",
+          hostelName: "TechLearners Hostel",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "4",
+          name: "Priya Sharma",
+          email: "priya@techlearners.com",
+          phone: "9876543212",
+          role: "tenant",
+          password: "tenant123",
+          hostelId: "1",
+          hostelName: "TechLearners Hostel",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      complaints: [
+        {
+          id: "1",
+          title: "AC not working in room 101",
+          description: "The air conditioning unit in my room has stopped working since yesterday. It's getting very hot and uncomfortable.",
+          category: "maintenance",
+          priority: "high",
+          status: "open",
+          tenantId: "1",
+          tenantName: "Rahul Kumar",
+          tenantPhone: "9876543211",
+          room: "101",
+          hostelId: "1",
+          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          comments: []
+        },
+        {
+          id: "2",
+          title: "Water leakage in bathroom",
+          description: "There is water leakage from the bathroom ceiling. It started this morning and is getting worse.",
+          category: "maintenance",
+          priority: "medium",
+          status: "in-progress",
+          tenantId: "2",
+          tenantName: "Priya Sharma",
+          tenantPhone: "9876543212",
+          room: "102",
+          hostelId: "1",
+          createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+          comments: [
+            {
+              id: "1",
+              comment: "We have contacted the plumber. He will visit today evening.",
+              author: "Admin",
+              role: "admin",
+              createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+            }
+          ]
+        },
+        {
+          id: "3",
+          title: "Food quality issue",
+          description: "The food served in the mess today was not fresh. Many students complained about the taste.",
+          category: "food",
+          priority: "medium",
+          status: "resolved",
+          tenantId: "1",
+          tenantName: "Rahul Kumar",
+          tenantPhone: "9876543211",
+          room: "101",
+          hostelId: "1",
+          createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          comments: [
+            {
+              id: "2",
+              comment: "We have spoken to the mess contractor about this issue.",
+              author: "Admin",
+              role: "admin",
+              createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+            },
+            {
+              id: "3",
+              comment: "Thank you for addressing this quickly!",
+              author: "Rahul Kumar",
+              role: "tenant",
+              createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+            }
+          ]
+        }
+      ],
       payments: [],
-      complaints: [],
-      users: [],
       expenses: [],
       staff: [],
       hostelRequests: [],
@@ -316,7 +592,7 @@ const initializeData = async () => {
       checkoutRequests: [],
       hostelSettings: [],
       supportTickets: [],
-      _sequence: { nextId: 1 }
+      _sequence: { nextId: 5 }
     };
     await fs.writeFile(DATA_FILE, JSON.stringify(initialData, null, 2));
   }
@@ -332,7 +608,7 @@ const generateId = (data) => {
   return id;
 };
 
-// Robust read operations with corruption handling
+// Robust read operations with corruption handling and backup recovery
 const readData = async () => {
   try {
     let rawData = await fs.readFile(DATA_FILE, 'utf8');
@@ -368,27 +644,255 @@ const readData = async () => {
     
     // Write back if we fixed anything
     if (needsUpdate) {
-      await fs.writeFile(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+      await writeData(parsed);
     }
     
     return parsed;
   } catch (error) {
-    console.error('Read error, creating fresh file:', error);
+    console.error('Read error, attempting backup recovery:', error);
     
-    // Create fresh file with default structure
+    // Try to restore from backup
+    try {
+      const backups = await fs.readdir(BACKUP_DIR);
+      const sortedBackups = backups.filter(f => f.startsWith('data-')).sort().reverse();
+      
+      for (const backup of sortedBackups) {
+        try {
+          const backupPath = path.join(BACKUP_DIR, backup);
+          const backupData = await fs.readFile(backupPath, 'utf8');
+          const parsed = JSON.parse(backupData);
+          
+          // Restore from this backup
+          await fs.copyFile(backupPath, DATA_FILE);
+          console.log('Successfully restored from backup:', backup);
+          return parsed;
+        } catch (backupError) {
+          console.log('Backup', backup, 'is also corrupted, trying next...');
+        }
+      }
+    } catch (backupDirError) {
+      console.log('No backup directory found');
+    }
+    
+    // Create fresh file with test data
+    console.log('Creating fresh data file with test data...');
     const defaultData = {
-      hostels: [],
-      tenants: [],
-      rooms: [],
+      hostels: [
+        {
+          id: "1",
+          name: "TechLearners Hostel",
+          displayName: "TechLearners Hostel",
+          address: "123 Tech Street, Hyderabad, Telangana 500001",
+          contactEmail: "admin@techlearners.com",
+          phone: "9876543210",
+          planType: "premium",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      rooms: [
+        {
+          id: "1",
+          roomNumber: "101",
+          roomType: "single",
+          capacity: 1,
+          rent: 8000,
+          deposit: 5000,
+          status: "occupied",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "2",
+          roomNumber: "102",
+          roomType: "single",
+          capacity: 1,
+          rent: 7500,
+          deposit: 5000,
+          status: "occupied",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      tenants: [
+        {
+          id: "1",
+          name: "Rahul Kumar",
+          email: "rahul@techlearners.com",
+          phone: "9876543211",
+          room: "101",
+          roomId: "1",
+          rent: 8000,
+          deposit: 5000,
+          status: "active",
+          joiningDate: "2024-01-15",
+          nextDueDate: "2024-12-15",
+          pendingDues: 0,
+          aadharNumber: "1234-5678-9012",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "2",
+          name: "Priya Sharma",
+          email: "priya@techlearners.com",
+          phone: "9876543212",
+          room: "102",
+          roomId: "2",
+          rent: 7500,
+          deposit: 5000,
+          status: "active",
+          joiningDate: "2024-02-01",
+          nextDueDate: "2025-01-01",
+          pendingDues: 0,
+          aadharNumber: "2345-6789-0123",
+          hostelId: "1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      users: [
+        {
+          id: "1",
+          name: "Master Admin",
+          email: "master@hostelpro.com",
+          phone: "9999999999",
+          role: "master_admin",
+          password: "master123",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "2",
+          name: "Venkatesh Panuganti",
+          email: "admin@techlearners.com",
+          phone: "9908227236",
+          role: "admin",
+          password: "admin123",
+          hostelId: "1",
+          hostelName: "TechLearners Hostel",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "3",
+          name: "Rahul Kumar",
+          email: "rahul@techlearners.com",
+          phone: "9876543211",
+          role: "tenant",
+          password: "tenant123",
+          hostelId: "1",
+          hostelName: "TechLearners Hostel",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: "4",
+          name: "Priya Sharma",
+          email: "priya@techlearners.com",
+          phone: "9876543212",
+          role: "tenant",
+          password: "tenant123",
+          hostelId: "1",
+          hostelName: "TechLearners Hostel",
+          status: "active",
+          firstLogin: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      complaints: [
+        {
+          id: "1",
+          title: "AC not working in room 101",
+          description: "The air conditioning unit in my room has stopped working since yesterday. It's getting very hot and uncomfortable.",
+          category: "maintenance",
+          priority: "high",
+          status: "open",
+          tenantId: "1",
+          tenantName: "Rahul Kumar",
+          tenantPhone: "9876543211",
+          room: "101",
+          hostelId: "1",
+          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          comments: []
+        },
+        {
+          id: "2",
+          title: "Water leakage in bathroom",
+          description: "There is water leakage from the bathroom ceiling. It started this morning and is getting worse.",
+          category: "maintenance",
+          priority: "medium",
+          status: "in-progress",
+          tenantId: "2",
+          tenantName: "Priya Sharma",
+          tenantPhone: "9876543212",
+          room: "102",
+          hostelId: "1",
+          createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+          comments: [
+            {
+              id: "1",
+              comment: "We have contacted the plumber. He will visit today evening.",
+              author: "Admin",
+              role: "admin",
+              createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+            }
+          ]
+        },
+        {
+          id: "3",
+          title: "Food quality issue",
+          description: "The food served in the mess today was not fresh. Many students complained about the taste.",
+          category: "food",
+          priority: "medium",
+          status: "resolved",
+          tenantId: "1",
+          tenantName: "Rahul Kumar",
+          tenantPhone: "9876543211",
+          room: "101",
+          hostelId: "1",
+          createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+          updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          comments: [
+            {
+              id: "2",
+              comment: "We have spoken to the mess contractor about this issue.",
+              author: "Admin",
+              role: "admin",
+              createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+            },
+            {
+              id: "3",
+              comment: "Thank you for addressing this quickly!",
+              author: "Rahul Kumar",
+              role: "tenant",
+              createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+            }
+          ]
+        }
+      ],
       payments: [],
-      complaints: [],
-      users: [],
       expenses: [],
       staff: [],
       hostelRequests: [],
       notices: [],
       checkoutRequests: [],
-      hostelSettings: []
+      hostelSettings: [],
+      supportTickets: [],
+      _sequence: { nextId: 5 }
     };
     
     await fs.writeFile(DATA_FILE, JSON.stringify(defaultData, null, 2), 'utf8');
@@ -396,7 +900,27 @@ const readData = async () => {
   }
 };
 
-// Robust file operations with proper locking
+// Backup system
+const BACKUP_DIR = path.join(__dirname, 'backups');
+const createBackup = async () => {
+  try {
+    await fs.mkdir(BACKUP_DIR, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile = path.join(BACKUP_DIR, `data-${timestamp}.json`);
+    await fs.copyFile(DATA_FILE, backupFile);
+    
+    // Keep only last 10 backups
+    const backups = await fs.readdir(BACKUP_DIR);
+    const sortedBackups = backups.filter(f => f.startsWith('data-')).sort().reverse();
+    for (let i = 10; i < sortedBackups.length; i++) {
+      await fs.unlink(path.join(BACKUP_DIR, sortedBackups[i]));
+    }
+  } catch (error) {
+    console.error('Backup creation failed:', error);
+  }
+};
+
+// Atomic write operations with backup
 let isWriting = false;
 const writeQueue = [];
 
@@ -414,26 +938,49 @@ const processQueue = async () => {
   const { data, resolve, reject } = writeQueue.shift();
   
   try {
-    // Validate data structure first
+    // Create backup before writing
+    await createBackup();
+    
+    // Validate data structure
     if (!data || typeof data !== 'object') {
       throw new Error('Invalid data structure');
     }
     
     const jsonString = JSON.stringify(data, null, 2);
     
-    // Double-check JSON is valid
+    // Validate JSON
     JSON.parse(jsonString);
     
-    // Write directly without temp files to avoid rename issues
-    await fs.writeFile(DATA_FILE, jsonString, { encoding: 'utf8', flag: 'w' });
+    // Atomic write using temp file
+    const tempFile = DATA_FILE + '.tmp';
+    await fs.writeFile(tempFile, jsonString, { encoding: 'utf8' });
+    
+    // Verify temp file is valid
+    const verification = await fs.readFile(tempFile, 'utf8');
+    JSON.parse(verification);
+    
+    // Atomic rename
+    await fs.rename(tempFile, DATA_FILE);
     
     resolve();
   } catch (error) {
     console.error('Write operation failed:', error);
+    
+    // Try to restore from backup if main file is corrupted
+    try {
+      const backups = await fs.readdir(BACKUP_DIR);
+      const latestBackup = backups.filter(f => f.startsWith('data-')).sort().pop();
+      if (latestBackup) {
+        await fs.copyFile(path.join(BACKUP_DIR, latestBackup), DATA_FILE);
+        console.log('Restored from backup:', latestBackup);
+      }
+    } catch (restoreError) {
+      console.error('Backup restore failed:', restoreError);
+    }
+    
     reject(error);
   } finally {
     isWriting = false;
-    // Process next item
     setTimeout(processQueue, 10);
   }
 };
@@ -1086,9 +1633,10 @@ app.post('/api/hostelRequests/:id/approve', async (req, res) => {
       if (data.hostels[i].id === hostelRequest.hostelId) {
         const oldStatus = data.hostels[i].status;
         data.hostels[i].status = 'active';
+        data.hostels[i].planType = hostelRequest.planType; // Add plan type from request
         data.hostels[i].approvedAt = new Date().toISOString();
         data.hostels[i].updatedAt = new Date().toISOString();
-        console.log(`✅ HOSTEL STATUS UPDATED: ${data.hostels[i].name} (${oldStatus} -> active)`);
+        console.log(`✅ HOSTEL STATUS UPDATED: ${data.hostels[i].name} (${oldStatus} -> active) with plan: ${hostelRequest.planType}`);
         hostelUpdated = true;
         break;
       }
@@ -1689,6 +2237,7 @@ entities.forEach(entity => {
           address: newItem.address,
           contactEmail: newItem.email,
           phone: newItem.phone,
+          planType: newItem.planType, // Include plan type from request
           status: 'pending_approval',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -2265,6 +2814,15 @@ Promise.all([initializeData(), initDB()]).then(() => {
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`📱 FCM notifications enabled`);
+    console.log(`💾 Backup system initialized`);
+    
+    // Create initial backup
+    createBackup().catch(console.error);
+    
+    // Create backup every hour
+    setInterval(() => {
+      createBackup().catch(console.error);
+    }, 60 * 60 * 1000);
   });
 });
 
