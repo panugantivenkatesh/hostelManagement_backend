@@ -1674,8 +1674,7 @@ entities.forEach(entity => {
           requestId: newItem.id
         };
         
-        await sendNotification(masterAdminNotification, 'master_admin', null);
-        console.log('📨 New hostel request notification sent to master admin');
+        console.log('📨 Hostel request created - FCM will handle notifications');
         
         // Also send FCM notification to master admin Android devices
         try {
