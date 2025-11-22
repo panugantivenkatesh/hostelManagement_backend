@@ -1027,6 +1027,44 @@ app.post('/api/hostelRequests/:id/approve', async (req, res) => {
       // Send notification to hostel admin
       await sendNotification(approvalNotification, 'admin', approvedHostel.id);
       console.log('✅ Approval notification sent to hostel admin');
+      
+      // Also send FCM notification to hostel admin Android devices
+      try {
+        const hostelAdminTokens = await db.all(`
+          SELECT token FROM fcm_tokens 
+          WHERE hostelId = ? AND userType = 'admin' AND token IS NOT NULL
+        `, [approvedHostel.id]);
+        
+        if (hostelAdminTokens.length > 0) {
+          const admin = require('firebase-admin');
+          const tokens = hostelAdminTokens.map(row => row.token);
+          
+          const fcmMessage = {
+            notification: {
+              title: 'Hostel Approved! 🎉',
+              body: `"${approvedHostel.displayName || approvedHostel.name}" has been approved by Master Admin`
+            },
+            data: {
+              type: 'hostel_approved',
+              hostelId: approvedHostel.id,
+              action: 'view_dashboard'
+            },
+            android: {
+              notification: {
+                sound: 'default',
+                priority: 'high',
+                channelId: 'pgflow_notifications'
+              }
+            },
+            tokens
+          };
+          
+          const response = await admin.messaging().sendMulticast(fcmMessage);
+          console.log(`📱 FCM approval sent to ${response.successCount}/${tokens.length} hostel admin devices`);
+        }
+      } catch (fcmError) {
+        console.error('❌ FCM approval notification error:', fcmError);
+      }
     }
     
     console.log('🎉 HOSTEL APPROVAL COMPLETED SUCCESSFULLY');
@@ -1605,6 +1643,44 @@ entities.forEach(entity => {
         
         await sendNotification(masterAdminNotification, 'master_admin', null);
         console.log('📨 New hostel request notification sent to master admin');
+        
+        // Also send FCM notification to master admin Android devices
+        try {
+          const masterAdminTokens = await db.all(`
+            SELECT token FROM fcm_tokens 
+            WHERE userType = 'master_admin' AND token IS NOT NULL
+          `);
+          
+          if (masterAdminTokens.length > 0) {
+            const admin = require('firebase-admin');
+            const tokens = masterAdminTokens.map(row => row.token);
+            
+            const fcmMessage = {
+              notification: {
+                title: 'New Hostel Setup Request 🏨',
+                body: `${newItem.name} requested setup for "${newItem.hostelName}"`
+              },
+              data: {
+                type: 'hostel_request',
+                requestId: newItem.id,
+                action: 'view_request'
+              },
+              android: {
+                notification: {
+                  sound: 'default',
+                  priority: 'high',
+                  channelId: 'pgflow_notifications'
+                }
+              },
+              tokens
+            };
+            
+            const response = await admin.messaging().sendMulticast(fcmMessage);
+            console.log(`📱 FCM sent to ${response.successCount}/${tokens.length} master admin devices`);
+          }
+        } catch (fcmError) {
+          console.error('❌ FCM notification error:', fcmError);
+        }
       } else if (entity === 'supportTickets') {
         // Notify master admin of new support tickets
         const supportNotification = {
