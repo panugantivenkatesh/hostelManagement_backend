@@ -204,7 +204,11 @@ app.use(cors({
   origin: [
     'https://pgflow.netlify.app',
     'http://localhost:3000',
-    'http://localhost:3001'
+    'http://localhost:3001',
+    'http://192.168.0.138:3000',
+    /^http:\/\/192\.168\./,
+    'capacitor://localhost',
+    'ionic://localhost'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
