@@ -875,6 +875,77 @@ app.post('/api/test-notification', async (req, res) => {
   }
 });
 
+// Payment reminder endpoints
+app.post('/api/notifications/payment-reminder', async (req, res) => {
+  try {
+    const { tenantId, tenantName, amount, hostelId } = req.body;
+    
+    const paymentReminderNotification = {
+      type: 'payment_reminder',
+      title: '💰 Payment Reminder',
+      message: `Hi ${tenantName}! Your rent payment of ₹${amount} is pending. Please make the payment at your earliest convenience to avoid late fees.`,
+      priority: 'high',
+      createdAt: new Date().toISOString(),
+      tenantId
+    };
+    
+    // Send FCM notification to tenant
+    await sendFCMNotifications(paymentReminderNotification, 'tenant', hostelId);
+    
+    // Also send WebSocket notification
+    await sendNotification(paymentReminderNotification, 'tenant', hostelId);
+    
+    console.log(`💰 Payment reminder sent to tenant: ${tenantName}`);
+    res.json({ success: true, message: 'Payment reminder sent successfully' });
+  } catch (error) {
+    console.error('Payment reminder error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/notifications/bulk-payment-reminder', async (req, res) => {
+  try {
+    const { hostelId } = req.body;
+    const data = await readData();
+    
+    // Find tenants with pending dues in the hostel
+    const tenantsWithDues = data.tenants.filter(tenant => 
+      tenant.hostelId === hostelId && 
+      tenant.pendingDues && 
+      tenant.pendingDues > 0 &&
+      tenant.status === 'active'
+    );
+    
+    if (tenantsWithDues.length === 0) {
+      return res.json({ success: true, count: 0, message: 'No tenants with pending dues found' });
+    }
+    
+    const bulkNotification = {
+      type: 'payment_reminder',
+      title: '💰 Payment Reminder',
+      message: 'Your rent payment is pending. Please make the payment at your earliest convenience to avoid late fees.',
+      priority: 'high',
+      createdAt: new Date().toISOString()
+    };
+    
+    // Send FCM notification to all tenants with dues
+    await sendFCMNotifications(bulkNotification, 'tenant', hostelId);
+    
+    // Also send WebSocket notifications
+    await sendNotification(bulkNotification, 'tenant', hostelId);
+    
+    console.log(`💰 Bulk payment reminders sent to ${tenantsWithDues.length} tenants`);
+    res.json({ 
+      success: true, 
+      count: tenantsWithDues.length, 
+      message: `Payment reminders sent to ${tenantsWithDues.length} tenants` 
+    });
+  } catch (error) {
+    console.error('Bulk payment reminder error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Add comment to complaint endpoint
 app.post('/api/complaints/:id/comments', async (req, res) => {
   try {
@@ -1872,16 +1943,15 @@ entities.forEach(entity => {
         
         // Also notify the tenant about payment confirmation
         if (newItem.tenantId) {
-          const tenantNotification = {
+          await sendFCMNotifications({
             type: 'payment_confirmed',
-            title: 'Payment Recorded',
-            message: `Your payment of ₹${newItem.amount} has been successfully recorded. Thank you for your payment!`,
-            priority: 'medium',
-            createdAt: new Date().toISOString(),
-            paymentId: newItem.id
-          };
+            title: '💳 Payment Recorded Successfully',
+            message: `Great! Your payment of ₹${newItem.amount} has been recorded. Thank you for your payment!`,
+            paymentId: newItem.id,
+            route: '/tenant/payments',
+            action: 'view_payment'
+          }, 'tenant', newItem.hostelId);
           
-          await sendNotification(tenantNotification, 'tenant', newItem.hostelId);
           console.log('💳 Payment confirmation sent to tenant');
         }
         
@@ -1965,16 +2035,15 @@ entities.forEach(entity => {
         console.log('✅ Payment approval notification sent to receptionist');
         
         // Notify tenant
-        const tenantApprovalNotification = {
+        await sendFCMNotifications({
           type: 'payment_approved',
-          title: 'Payment Approved',
+          title: '✅ Payment Approved!',
           message: `Great news! Your payment of ₹${updatedItem.amount} has been approved. Your account is now up to date.`,
-          priority: 'medium',
-          createdAt: new Date().toISOString(),
-          paymentId: updatedItem.id
-        };
+          paymentId: updatedItem.id,
+          route: '/tenant/payments',
+          action: 'view_payment'
+        }, 'tenant', updatedItem.hostelId);
         
-        await sendNotification(tenantApprovalNotification, 'tenant', updatedItem.hostelId);
         console.log('💵 Payment approval notification sent to tenant');
       }
       
