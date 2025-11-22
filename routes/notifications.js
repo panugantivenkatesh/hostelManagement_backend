@@ -3,18 +3,19 @@ const admin = require('firebase-admin');
 const router = express.Router();
 
 // Initialize Firebase Admin SDK
-if (!admin.apps.length) {
-  const projectId = process.env.FIREBASE_PROJECT_ID || 'hostelpro-notifications';
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@hostelpro-notifications.iam.gserviceaccount.com';
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY || `-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCKiU6QYRruxSTo\nycGbqaVBTjWPXzCBwRcBMeKwkEYe5u1Yxnz3HIb6sKQ5tfuImrNik/w9h/AzhTtr\n8CNRe9e/DZWE5PZVDBCUdurbOyyVc+8Ve7C5drc6XQ7QzIqepnrT4OYRBfySbKdp\nShMb4myLE3tCRtmiUmxfUdc08l9/UMTrUBmnwA9o2YDyYKB3AVc4fRN/I0LyV8c0\n9sRAWXICwkpaNTPx3TRsqIe0t/HLfgjJEA5kWaM9CMwA/l9u5TlhZ2XQBuJKj9xQ\nYyyBP3I3IVbJsEs3nf4Uoaz7W34zJvh2bLDtidowIhfWxHd/5VyL1c0xJUol7/PY\ngP/ZBHa/AgMBAAECggEAAoasaw+KOS5ZFPGQ2TDHtaAic+HNdaA6tifdtVB8JtYZ\nH9RGtQ7NG0cbR34c/wmrGbIPGGQhKh9UzQwM6NB0R6SMxGaUY0qcBskAUU0L7BG4\nG1EtEMSsZKELwxznrirk9HYWW9sbFuRqTQ4vuQNw7TxGtBesojwUg8xvOyTsPtsI\nTfsifKpHN1coqPTBwNW95Fxw5Mz9MENo/kXTpWsWZiVaKLiD9wVIXcgOCqoyC2C1\n/ethhQLAwv0cjyBgjnngwwpNI2HH5ZG7ihk8jQ7qVsFp5T4xO8vrYHdsPBp1ME4i\n5+PqNBOZgYbJcFiyCF6BK18iWr+SX7FVlYoY+u+1yQKBgQC9fSU2rEHs/tltc5zz\nq7Jz3TFzV2IGJuv6wTPD0At8skhPjsB8xCt2OHU0f54DyAP0phProlwhbIYeYbs7\nYjcJrXiEKfgn3UaqOC7lG6bLa99aWTP4FjvNRXNhv6MRqz7Qm0zv4pmMGFcY1ZLo\no5qKlSczQYnaXM4ZocChebAc6wKBgQC7Kbw+7Z5LMt0oQB7/W837ishAIVppTK9w\nZyk0cW7GInihBLlVzhiz6EY2/VoLqw3QvBObSHc8deuIFOLOmtVWtaIme6h7lWzy\nuEdribNYPlmgLnw4/0nyLDKkc+nY+uBl+cv4vkm6CSmw/3N1WpIKwo9iDFRJmMea\nnaXoU50IfQKBgQCq0RDl+10mzwqkT0+Snhottp2oc4KLNzUNhHMstvRUAceL6Iz/\nLDxdw0FtBQomMH3YYoqcpW1WOCWjZ8jIHJ6u27FDuy3YifH06tbjdAzlXiYnpThj\nEW/xeQUtffr7p5rlpMoziduPXjXNzmIz06AyA4kl/JPPxE+K7bTgG/m15wKBgQCg\nh4x5YO97SjYcNtsfZQuIa6GUN8dHN8nmG+VgoMZFVP2oBdg8+1d+v4Ox2J2qEl34\nIcijUIVMq0uIXXmngW/oPkPExB1fWmumx14io2nbDydqV1SewoAXIceR/AWf4JYl\ngRps0DGGSiOjN4c9KaDHb9bxXufQdCUHvZ22ZjjzNQKBgBuJ1WyGp9dOQA6WKXSu\nvNjmuCpEN5v8uqyM0tFVRJOV1iLZZFpO0tnWvt0zTnZAw0wNXAP58urzUHSeAx1d\njq5kMMVVwAzy2/tSc1uhEyGjMcR9m6lQM61J5HttNFDkI3knMajJ46R10/dlgRw3\nLVMdZFhpv4uY/4/9WW8b0LR8\n-----END PRIVATE KEY-----`;
-
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId,
-      clientEmail,
-      privateKey: privateKey.replace(/\\n/g, '\n')
-    })
-  });
+try {
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: "hostelpro-notifications",
+        clientEmail: "firebase-adminsdk-fbsvc@hostelpro-notifications.iam.gserviceaccount.com",
+        privateKey: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCKiU6QYRruxSTo\nycGbqaVBTjWPXzCBwRcBMeKwkEYe5u1Yxnz3HIb6sKQ5tfuImrNik/w9h/AzhTtr\n8CNRe9e/DZWE5PZVDBCUdurbOyyVc+8Ve7C5drc6XQ7QzIqepnrT4OYRBfySbKdp\nShMb4myLE3tCRtmiUmxfUdc08l9/UMTrUBmnwA9o2YDyYKB3AVc4fRN/I0LyV8c0\n9sRAWXICwkpaNTPx3TRsqIe0t/HLfgjJEA5kWaM9CMwA/l9u5TlhZ2XQBuJKj9xQ\nYyyBP3I3IVbJsEs3nf4Uoaz7W34zJvh2bLDtidowIhfWxHd/5VyL1c0xJUol7/PY\ngP/ZBHa/AgMBAAECggEAAoasaw+KOS5ZFPGQ2TDHtaAic+HNdaA6tifdtVB8JtYZ\nH9RGtQ7NG0cbR34c/wmrGbIPGGQhKh9UzQwM6NB0R6SMxGaUY0qcBskAUU0L7BG4\nG1EtEMSsZKELwxznrirk9HYWW9sbFuRqTQ4vuQNw7TxGtBesojwUg8xvOyTsPtsI\nTfsifKpHN1coqPTBwNW95Fxw5Mz9MENo/kXTpWsWZiVaKLiD9wVIXcgOCqoyC2C1\n/ethhQLAwv0cjyBgjnngwwpNI2HH5ZG7ihk8jQ7qVsFp5T4xO8vrYHdsPBp1ME4i\n5+PqNBOZgYbJcFiyCF6BK18iWr+SX7FVlYoY+u+1yQKBgQC9fSU2rEHs/tltc5zz\nq7Jz3TFzV2IGJuv6wTPD0At8skhPjsB8xCt2OHU0f54DyAP0phProlwhbIYeYbs7\nYjcJrXiEKfgn3UaqOC7lG6bLa99aWTP4FjvNRXNhv6MRqz7Qm0zv4pmMGFcY1ZLo\no5qKlSczQYnaXM4ZocChebAc6wKBgQC7Kbw+7Z5LMt0oQB7/W837ishAIVppTK9w\nZyk0cW7GInihBLlVzhiz6EY2/VoLqw3QvBObSHc8deuIFOLOmtVWtaIme6h7lWzy\nuEdribNYPlmgLnw4/0nyLDKkc+nY+uBl+cv4vkm6CSmw/3N1WpIKwo9iDFRJmMea\nnaXoU50IfQKBgQCq0RDl+10mzwqkT0+Snhottp2oc4KLNzUNhHMstvRUAceL6Iz/\nLDxdw0FtBQomMH3YYoqcpW1WOCWjZ8jIHJ6u27FDuy3YifH06tbjdAzlXiYnpThj\nEW/xeQUtffr7p5rlpMoziduPXjXNzmIz06AyA4kl/JPPxE+K7bTgG/m15wKBgQCg\nh4x5YO97SjYcNtsfZQuIa6GUN8dHN8nmG+VgoMZFVP2oBdg8+1d+v4Ox2J2qEl34\nIcijUIVMq0uIXXmngW/oPkPExB1fWmumx14io2nbDydqV1SewoAXIceR/AWf4JYl\ngRps0DGGSiOjN4c9KaDHb9bxXufQdCUHvZ22ZjjzNQKBgBuJ1WyGp9dOQA6WKXSu\nvNjmuCpEN5v8uqyM0tFVRJOV1iLZZFpO0tnWvt0zTnZAw0wNXAP58urzUHSeAx1d\njq5kMMVVwAzy2/tSc1uhEyGjMcR9m6lQM61J5HttNFDkI3knMajJ46R10/dlgRw3\nLVMdZFhpv4uY/4/9WW8b0LR8\n-----END PRIVATE KEY-----\n"
+      })
+    });
+    console.log('✅ Firebase Admin SDK initialized');
+  }
+} catch (error) {
+  console.error('❌ Firebase Admin SDK initialization failed:', error);
 }
 
 // Save FCM token
@@ -203,6 +204,64 @@ router.post('/fcm-token', async (req, res) => {
   } catch (error) {
     console.error('❌ FCM token save error:', error);
     res.status(500).json({ error: 'Failed to save token' });
+  }
+});
+
+// Test FCM notification endpoint
+router.post('/test-fcm', async (req, res) => {
+  try {
+    const { userRole, hostelId } = req.body;
+    
+    const db = req.db;
+    let query = 'SELECT token FROM fcm_tokens WHERE userType = ? AND token IS NOT NULL';
+    let params = [userRole];
+    
+    if (hostelId) {
+      query += ' AND hostelId = ?';
+      params.push(hostelId);
+    }
+    
+    const rows = await db.all(query, params);
+    const tokens = rows.map(row => row.token);
+    
+    console.log(`📱 Found ${tokens.length} FCM tokens for role: ${userRole}`);
+    
+    if (tokens.length === 0) {
+      return res.json({ success: false, message: 'No FCM tokens found', tokens: 0 });
+    }
+    
+    const admin = require('firebase-admin');
+    const message = {
+      notification: {
+        title: 'Test FCM Notification 📨',
+        body: 'This is a test notification from backend'
+      },
+      data: {
+        type: 'test',
+        action: 'test_notification'
+      },
+      android: {
+        notification: {
+          sound: 'default',
+          priority: 'high',
+          channelId: 'pgflow_notifications'
+        }
+      },
+      tokens
+    };
+    
+    const response = await admin.messaging().sendMulticast(message);
+    console.log(`✅ Test FCM sent to ${response.successCount}/${tokens.length} devices`);
+    
+    res.json({ 
+      success: true, 
+      sent: response.successCount, 
+      total: tokens.length,
+      failures: response.failureCount
+    });
+  } catch (error) {
+    console.error('❌ Test FCM error:', error);
+    res.status(500).json({ error: 'Failed to send test FCM', details: error.message });
   }
 });
 
