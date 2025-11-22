@@ -81,11 +81,13 @@ const sendFCMNotifications = async (notification, targetRole, hostelId = null) =
     let params = [targetRole];
     
     if (hostelId !== null) {
-      query += ' AND hostelId = ?';
-      params.push(String(hostelId));
+      query += ' AND (hostelId = ? OR hostelId = ?)';
+      params.push(String(hostelId), hostelId);
     }
     
+    console.log(`🔍 FCM Query: ${query} with params:`, params);
     const rows = await db.all(query, params);
+    console.log(`📊 FCM tokens found: ${rows.length}`);
     const tokens = rows.map(row => row.token);
     
     if (tokens.length === 0) {
