@@ -72,6 +72,60 @@ wss.on('connection', (ws) => {
   });
 });
 
+// Helper function to send FCM notifications
+const sendFCMNotifications = async (notification, targetRole, hostelId = null) => {
+  if (!db) return 0;
+  
+  try {
+    let query = 'SELECT token FROM fcm_tokens WHERE userType = ? AND token IS NOT NULL';
+    let params = [targetRole];
+    
+    if (hostelId !== null) {
+      query += ' AND hostelId = ?';
+      params.push(String(hostelId));
+    }
+    
+    const rows = await db.all(query, params);
+    const tokens = rows.map(row => row.token);
+    
+    if (tokens.length === 0) {
+      console.log(`No FCM tokens found for role: ${targetRole}, hostelId: ${hostelId}`);
+      return 0;
+    }
+    
+    console.log(`📱 Sending FCM to ${tokens.length} Android devices`);
+    
+    const admin = require('firebase-admin');
+    const message = {
+      notification: {
+        title: notification.title,
+        body: notification.message
+      },
+      data: {
+        type: notification.type || 'general',
+        complaintId: notification.complaintId || '',
+        action: 'view_notification'
+      },
+      android: {
+        notification: {
+          sound: 'default',
+          priority: 'high',
+          channelId: 'default'
+        }
+      },
+      tokens
+    };
+    
+    const response = await admin.messaging().sendMulticast(message);
+    console.log(`✅ FCM sent to ${response.successCount}/${tokens.length} devices`);
+    
+    return response.successCount;
+  } catch (error) {
+    console.error('❌ FCM notification error:', error);
+    return 0;
+  }
+};
+
 // Helper function to send notifications
 const sendNotification = async (notification, targetRole, hostelId = null) => {
   console.log(`Sending notification to role: ${targetRole}, hostelId: ${hostelId}`);
@@ -79,6 +133,7 @@ const sendNotification = async (notification, targetRole, hostelId = null) => {
   
   let sentCount = 0;
   let pushCount = 0;
+  let fcmCount = 0;
   
   // Send WebSocket notifications to connected users
   connectedUsers.forEach((userData, ws) => {
@@ -99,7 +154,10 @@ const sendNotification = async (notification, targetRole, hostelId = null) => {
     }
   });
   
-  // Send push notifications to subscribed users
+  // Send FCM notifications to Android devices
+  fcmCount = await sendFCMNotifications(notification, targetRole, hostelId);
+  
+  // Send push notifications to subscribed users (web)
   for (const [userId, subData] of pushSubscriptions.entries()) {
     const roleMatches = subData.userRole === targetRole;
     
@@ -138,7 +196,7 @@ const sendNotification = async (notification, targetRole, hostelId = null) => {
     }
   }
   
-  console.log(`Total WebSocket notifications: ${sentCount}, Push notifications: ${pushCount}`);
+  console.log(`Total notifications - WebSocket: ${sentCount}, FCM: ${fcmCount}, Web Push: ${pushCount}`);
 };
 
 // Configure CORS

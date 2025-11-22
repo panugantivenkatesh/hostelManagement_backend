@@ -185,4 +185,25 @@ router.post('/status-changed', async (req, res) => {
   }
 });
 
+// FCM token endpoint for Android
+router.post('/fcm-token', async (req, res) => {
+  try {
+    const { token, userId, userRole, hostelId, platform } = req.body;
+    
+    console.log('📱 FCM Token received:', { userId, userRole, hostelId, platform, tokenLength: token?.length });
+    
+    const db = req.db;
+    await db.run(`
+      INSERT OR REPLACE INTO fcm_tokens (userId, token, hostelId, userType, updatedAt)
+      VALUES (?, ?, ?, ?, datetime('now'))
+    `, [userId, token, hostelId, userRole]);
+    
+    console.log('✅ FCM token saved for Android:', { userId, userRole, hostelId });
+    res.json({ success: true, message: 'Token saved successfully' });
+  } catch (error) {
+    console.error('❌ FCM token save error:', error);
+    res.status(500).json({ error: 'Failed to save token' });
+  }
+});
+
 module.exports = router;
